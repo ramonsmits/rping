@@ -185,16 +185,20 @@ while (!cts.IsCancellationRequested)
         var sentAt = now.ToString("O");
         headers.Add("at", sentAt);
 
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var added = messages.TryAdd(channel.NextPublishSeqNo, tcs);
-        if (!added) throw new Exception($"Cannot publish a message with sequence number '{channel.NextPublishSeqNo}' on this channel. A message was already published on this channel with the same confirmation number.");
+        TaskCompletionSource<bool> tcs;
+        lock (channel)
+        {
+            tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var added = messages.TryAdd(channel.NextPublishSeqNo, tcs);
+            if (!added) throw new Exception($"Cannot publish a message with sequence number '{channel.NextPublishSeqNo}' on this channel. A message was already published on this channel with the same confirmation number.");
 
-        props.SetConfirmationId(channel.NextPublishSeqNo);
+            props.SetConfirmationId(channel.NextPublishSeqNo);
 
-        channel.BasicPublish(exchange: string.Empty,
-                                routingKey: QueueName,
-                                basicProperties: props,
-                                body: body);
+            channel.BasicPublish(exchange: string.Empty,
+                                    routingKey: QueueName,
+                                    basicProperties: props,
+                                    body: body);
+        }
         await tcs.Task;
         //Console.WriteLine(" [x] Sent {0} {1}", message, sentAt);
     });
